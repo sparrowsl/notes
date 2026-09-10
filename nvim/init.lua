@@ -1,8 +1,11 @@
+vim.g.start_time = vim.uv.hrtime()
+vim.loader.enable()
+
 require("options")
 require("keymaps")
-require("autocmds")
 require("diagnostics")
 require("plugins")
+require("autocmds")
 
 if vim.fn.has("nvim-0.12") == 1 then
   require("vim._core.ui2").enable({})

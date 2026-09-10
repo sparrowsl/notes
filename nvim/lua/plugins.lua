@@ -1,45 +1,80 @@
 vim.pack.add({
-  { src = "https://github.com/catppuccin/nvim", name = "catppuccin" },
+  "https://github.com/folke/tokyonight.nvim",
   "https://github.com/nvim-treesitter/nvim-treesitter",
-  "https://github.com/nvim-mini/mini.files",
-  "https://github.com/nvim-mini/mini.statusline",
-  "https://github.com/nvim-mini/mini.notify",
   {
     src = "https://github.com/Saghen/blink.cmp",
     version = vim.version.range("1.*"),
   },
-  "https://github.com/ibhagwan/fzf-lua",
-  "https://github.com/akinsho/bufferline.nvim",
   "https://github.com/lewis6991/gitsigns.nvim",
   "https://github.com/mason-org/mason-lspconfig.nvim",
+  "https://github.com/WhoIsSethDaniel/mason-tool-installer.nvim",
   "https://github.com/folke/which-key.nvim",
-  "https://github.com/akinsho/toggleterm.nvim",
-  -- "https://github.com/sindrets/diffview.nvim",
+  "https://github.com/folke/snacks.nvim",
 
-  -- Deps --
+  -- libraries --
   "https://github.com/neovim/nvim-lspconfig",        -- deps for lspconfig
   "https://github.com/mason-org/mason.nvim",         -- deps for lspconfig
-  "https://github.com/nvim-tree/nvim-web-devicons",  -- dep for icons
+  "https://github.com/nvim-mini/mini.nvim",          -- mini.icons, mini.ai, mini.surround, mini.statusline
   "https://github.com/rafamadriz/friendly-snippets", -- dep for blink
 }, { load = true })
 
--- ╔════════════════════════════════╗
--- ║     PLUGIN: CATPPUCCIN         ║
--- ╚════════════════════════════════╝
-vim.cmd.colorscheme("catppuccin")
+-- Core additions
+require("mini.icons").setup()
+MiniIcons.mock_nvim_web_devicons()
 
--- ╔════════════════════════════════╗
--- ║     PLUGIN: TREESITTER         ║
--- ╚════════════════════════════════╝
-local treesitter = require("nvim-treesitter")
+require("mini.ai").setup()
+require("mini.surround").setup()
 
-treesitter.setup({
-  install_dir = vim.fn.stdpath("data") .. "/site",
+-- Colorscheme
+require("tokyonight").setup({
+  styles = {
+    comments = { italic = true },
+    keywords = { italic = true },
+    functions = { italic = true },
+    variables = { italic = false },
+  },
 })
+vim.cmd.colorscheme("tokyonight")
 
-vim.treesitter.language.register("json", { "jsonc" })
+-- Snacks
+require("snacks").setup {
+  terminal = {
+    win = { position = "float", border = "rounded" },
+  },
+  dim = {},
+  indent = {},
+  picker = {},
+  input = {},
+  explorer = {},
+  image = {},
+  quickfile = {},
+  zen = {},
+  bigfile = {},
+  words = {},
+  scope = {},
+  dashboard = {
+    preset = {
+      keys = {
+        { icon = " ", key = "f", desc = "Find File", action = ":lua Snacks.dashboard.pick('files')" },
+        { icon = " ", key = "n", desc = "New File", action = ":ene | startinsert" },
+        { icon = " ", key = "g", desc = "Find Text", action = ":lua Snacks.dashboard.pick('grep')" },
+        { icon = " ", key = "r", desc = "Recent Files", action = ":lua Snacks.dashboard.pick('recent')" },
+        { icon = " ", key = "c", desc = "Config", action = ":lua Snacks.dashboard.pick('files', {cwd = vim.fn.stdpath('config')})" },
+        { icon = " ", key = "q", desc = "Quit", action = ":qa" },
+      },
+    },
+    sections = {
+      { section = "header" },
+      { section = "keys",  gap = 1, padding = 1 },
+      function()
+        local ms = math.floor((vim.uv.hrtime() - vim.g.start_time) / 1e6 + 0.5)
+        return { align = "center", text = "⚡ loaded in " .. ms .. "ms" }
+      end,
+    },
+  },
+}
 
-local ensure_parsers = {
+local parsers = {
   "bash",
   "c",
   "css",
@@ -57,195 +92,136 @@ local ensure_parsers = {
   "typescript",
   "yaml",
   "zig",
-  "python"
+  "python",
 }
 
-treesitter.install(ensure_parsers)
+require("nvim-treesitter").install(parsers)
 
--- ╔════════════════════════════════╗
--- ║        PLUGIN: MINI            ║
--- ╚════════════════════════════════╝
-require("mini.notify").setup()
-
+-- Statusline
 local statusline = require("mini.statusline")
-statusline.setup({ use_icons = vim.g.have_nerd_font, lazy = false })
+statusline.setup({ use_icons = vim.g.have_nerd_font })
 
 ---@diagnostic disable-next-line: duplicate-set-field
-statusline.section_location = function()
-  return "%2l:%-2v"
-end
-
-local minifiles = require("mini.files")
-minifiles.setup({
-  mappings = {
-    go_in       = '', -- disabled (use Enter instead)
-    go_in_plus  = '<CR>',
-    go_out      = '<Left>',
-    go_out_plus = '', -- disabled
-  },
-})
-
-vim.keymap.set("n", "-", function()
-  if not minifiles.close() then
-    local buf_name = vim.api.nvim_buf_get_name(0)
-    local path = buf_name == "" and vim.loop.cwd()
-        or vim.fn.fnamemodify(buf_name, ":p:h")
-    minifiles.open(path)
-  end
-end, { desc = "Toggle mini.files explorer" })
+statusline.section_location = function() return "%2l:%-2v" end
 
 
--- ╔════════════════════════════════╗
--- ║       PLUGIN: BLINK            ║
--- ╚════════════════════════════════╝
+-- Completion
 local blink = require("blink.cmp")
 blink.setup({
   keymap = {
-    preset = "super-tab",
+    preset = "default",
     ["<CR>"] = { "accept", "fallback" },
   },
   signature = { enabled = true },
   completion = {
     accept = { auto_brackets = { enabled = false } },
-    trigger = { show_in_snippet = false },
-    list = {
-      max_items = 100,
-      selection = { preselect = true, auto_insert = false },
-    },
-    ghost_text = { enabled = true, show_with_menu = false },
   },
   cmdline = {
     keymap = {
       ["<CR>"] = { "accept_and_enter", "fallback" },
     },
   },
-  sources = {
-    providers = {
-      cmdline = {
-        min_keyword_length = function(ctx)
-          if ctx.mode == "cmdline" and string.find(ctx.line, " ") == nil then
-            return 3
-          end
-          return 0
-        end,
-      },
-    },
-  },
 })
 
 local lsp_capabilities = blink.get_lsp_capabilities()
-vim.lsp.config("*", {
-  capabilities = lsp_capabilities,
-  -- root_markers = { ".git" },
-})
+vim.lsp.config("*", { capabilities = lsp_capabilities })
 
-vim.lsp.config("lua_ls", {
-  settings = {
-    Lua = {
-      runtime = { version = "LuaJIT" },
-      completion = { callSnippet = "Replace" },
-      diagnostics = {
-        globals = { "vim", "require" },
+-- Servers installed by mason-tool-installer. mason-lspconfig enables
+-- them automatically, capabilities come from blink.
+---@type table<string, vim.lsp.Config>
+local servers = {
+  biome = {},
+  clangd = {},
+  gopls = {},
+  emmet_language_server = {},
+  sqlls = {},
+  tailwindcss = {},
+  svelte = {},
+  zls = {
+    settings = {
+      zls = {
+        enable_build_on_save = true,
+        semantic_tokens = "partial",
       },
-      workspace = {
-        checkThirdParty = false,
-        library = {
-          vim.env.VIMRUNTIME,
-        },
-      },
-      telemetry = { enable = false },
     },
   },
-})
-
-vim.lsp.config("zls", {
-  settings = {
-    zls = { enable_build_on_save = true, semantic_tokens = "partial" },
+  lua_ls = {
+    settings = {
+      Lua = {
+        runtime = { version = "LuaJIT" },
+        completion = { callSnippet = "Replace" },
+        diagnostics = {
+          globals = { "vim" },
+        },
+        workspace = {
+          checkThirdParty = false,
+        },
+        telemetry = { enable = false },
+      },
+    },
   },
-})
+  tsc = {},
+  ty = {},
+  ruff = {},
+}
 
--- ╔════════════════════════════════╗
--- ║     PLUGIN: LSPCONFIG          ║
--- ╚════════════════════════════════╝
+-- LSP
 require("mason").setup()
-require("mason-lspconfig").setup({
-  ensure_installed = {
-    "biome",
-    "clangd",
-    "gopls",
-    "emmet_language_server",
-    "sqlls",
-    "tailwindcss",
-    "svelte",
-    "zls",
-    "lua_ls",
-    "tsgo",
-    "ty",
-    "ruff"
-  },
-})
+require("mason-lspconfig").setup {}
+require("mason-tool-installer").setup {
+  ensure_installed = vim.tbl_keys(servers),
+}
 
--- ╔════════════════════════════════╗
--- ║     PLUGIN: BUFFERLINE         ║
--- ╚════════════════════════════════╝
-require("bufferline").setup({
-  options = {
-    diagnostics = "nvim_lsp",
-    diagnostics_indicator = function(count, level)
-      local icon = level:match("error") and " " or " "
-      return " " .. icon .. count
-    end,
-  },
-})
-
--- ╔════════════════════════════════╗
--- ║     PLUGIN: WHICH-KEY          ║
--- ╚════════════════════════════════╝
+-- Key hints
 local which_key = require("which-key")
 which_key.setup({
-  -- icons = { mappings = vim.g.have_nerd_font },
+  spec = {
+    { "<leader>s", group = "[S]earch",   mode = { "n", "v" } },
+    { "<leader>t", group = "[T]oggle" },
+    { "<leader>h", group = "Git [H]unk", mode = { "n", "v" } },
+    { "<leader>w", group = "[W]indow" },
+    { "<leader>b", group = "[B]uffer" },
+  },
 })
 
 vim.keymap.set("n", "<leader>?", function()
   which_key.show({ global = false })
 end, { desc = "Buffer Local Keymaps (which-key)" })
 
--- ╔════════════════════════════════╗
--- ║     PLUGIN: TOGGLETERM         ║
--- ╚════════════════════════════════╝
-require("toggleterm").setup({
-  open_mapping = [[<C-/>]],
-  direction = "float",
-})
+-- Terminal and toggles
+vim.keymap.set({ "n", "i", "t" }, [[<C-/>]], function()
+  Snacks.terminal.toggle()
+end, { desc = "Toggle floating terminal" })
+Snacks.toggle.dim():map("<leader>td")
+Snacks.toggle.zen():map("<leader>tz")
+Snacks.toggle.zoom():map("<leader>Z")
+vim.keymap.set("n", "<leader>e", function() Snacks.explorer() end, { desc = "File Explorer" })
 
--- ╔════════════════════════════════╗
--- ║       PLUGIN: FZF-LUA          ║
--- ╚════════════════════════════════╝
-local fzf_lua = require("fzf-lua")
-fzf_lua.register_ui_select()
-
-vim.keymap.set("n", "<leader>sh", fzf_lua.helptags, { desc = "[S]earch [H]elp" })
-vim.keymap.set("n", "<leader>sk", fzf_lua.keymaps, { desc = "[S]earch [K]eymaps" })
-vim.keymap.set("n", "<leader>sf", fzf_lua.files, { desc = "[S]earch [F]iles" })
-vim.keymap.set("n", "<leader>ss", fzf_lua.builtin, { desc = "[S]earch [S]elect Telescope" })
-vim.keymap.set("n", "<leader>sw", fzf_lua.grep_curbuf, { desc = "[S]earch grep [W]ord in buffer" })
-vim.keymap.set("n", "<leader>/", fzf_lua.lgrep_curbuf, { desc = "[S]earch Current Buffer" })
-vim.keymap.set("n", "<leader>sg", fzf_lua.live_grep_native, { desc = "[S]earch by [G]rep in current project" })
-vim.keymap.set("n", "<leader>sr", fzf_lua.resume, { desc = "[S]earch [R]esume" })
-vim.keymap.set("n", "<leader>s.", fzf_lua.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
-vim.keymap.set("n", "<leader><leader>", fzf_lua.buffers, { desc = "[ ] Find existing buffers" })
-vim.keymap.set("n", "<leader>su", fzf_lua.spell_suggest, { desc = "[S]pell S[u]ggestions" })
-vim.keymap.set("n", "<leader>sp", fzf_lua.grep_project, { desc = "[S]earch [P]rojects" })
+-- Pickers
+vim.keymap.set("n", "<leader>sh", function() Snacks.picker.help() end, { desc = "[S]earch [H]elp" })
+vim.keymap.set("n", "<leader>sk", function() Snacks.picker.keymaps() end, { desc = "[S]earch [K]eymaps" })
+vim.keymap.set("n", "<leader>sf", function() Snacks.picker.files() end, { desc = "[S]earch [F]iles" })
+vim.keymap.set("n", "<leader>ss", function() Snacks.picker.pickers() end, { desc = "[S]earch [S]elect picker" })
+vim.keymap.set({ "n", "x" }, "<leader>sw", function() Snacks.picker.grep_word() end,
+  { desc = "[S]earch [W]ord (visual selection or cword)" })
+vim.keymap.set("n", "<leader>/", function() Snacks.picker.lines() end, { desc = "[S]earch Current Buffer" })
+vim.keymap.set("n", "<leader>sg", function() Snacks.picker.grep() end,
+  { desc = "[S]earch by [G]rep in current project" })
+vim.keymap.set("n", "<leader>sr", function() Snacks.picker.resume() end, { desc = "[S]earch [R]esume" })
+vim.keymap.set("n", "<leader>s.", function() Snacks.picker.recent() end,
+  { desc = '[S]earch Recent Files ("." for repeat)' })
+vim.keymap.set("n", "<leader><leader>", function() Snacks.picker.buffers() end, { desc = "[ ] Find existing buffers" })
+vim.keymap.set("n", "<leader>su", function() Snacks.picker.spelling() end, { desc = "[S]pell S[u]ggestions" })
+vim.keymap.set("n", "<leader>sp", function() Snacks.picker.grep({ hidden = true }) end, { desc = "[S]earch [P]roject (hidden)" })
 vim.keymap.set("n", "<leader>sn", function()
-  fzf_lua.files({ cwd = vim.fn.stdpath("config") })
+  Snacks.picker.files({ cwd = vim.fn.stdpath("config") })
 end, { desc = "[S]earch [N]eovim files" })
-vim.keymap.set("n", "<leader>q", fzf_lua.diagnostics_document, { desc = "Open diagnostic [Q]uickfix list" })
+vim.keymap.set("n", "<leader>q", function() Snacks.picker.diagnostics() end, { desc = "Show [Q]uickfix diagnostics" })
 
--- ╔════════════════════════════════╗
--- ║      PLUGIN: GITSIGNS          ║
--- ╚════════════════════════════════╝
-require("gitsigns").setup({
-  current_line_blame = true, -- Toggle with `:Gitsigns toggle_current_line_blame`
+-- Git signs
+local gitsigns = require("gitsigns")
+gitsigns.setup({
+  current_line_blame = false, -- Toggle with `<leader>tb`
   signs = {
     add = { text = "+" },
     change = { text = "~" },
@@ -254,24 +230,44 @@ require("gitsigns").setup({
     changedelete = { text = "~" },
     untracked = { text = "" },
   },
+  on_attach = function(bufnr)
+    -- Navigation
+    vim.keymap.set("n", "]c", function() gitsigns.nav_hunk("next") end, { desc = "Next git [c]hange", buf = bufnr })
+    vim.keymap.set("n", "[c", function() gitsigns.nav_hunk("prev") end, { desc = "Prev git [c]hange", buf = bufnr })
+
+    -- Stage / Reset hunk
+    vim.keymap.set("n", "<leader>hs", gitsigns.stage_hunk, { desc = "git [s]tage hunk", buf = bufnr })
+    vim.keymap.set("n", "<leader>hr", gitsigns.reset_hunk, { desc = "git [r]eset hunk", buf = bufnr })
+    vim.keymap.set("v", "<leader>hs", function() gitsigns.stage_hunk({ vim.fn.line("."), vim.fn.line("v") }) end,
+      { desc = "git [s]tage hunk", buf = bufnr })
+    vim.keymap.set("v", "<leader>hr", function() gitsigns.reset_hunk({ vim.fn.line("."), vim.fn.line("v") }) end,
+      { desc = "git [r]eset hunk", buf = bufnr })
+
+    -- Stage / Reset buffer
+    vim.keymap.set("n", "<leader>hS", gitsigns.stage_buffer, { desc = "git [S]tage buffer", buf = bufnr })
+    vim.keymap.set("n", "<leader>hR", gitsigns.reset_buffer, { desc = "git [R]eset buffer", buf = bufnr })
+
+    -- Preview
+    vim.keymap.set("n", "<leader>hp", gitsigns.preview_hunk, { desc = "git [p]review hunk", buf = bufnr })
+    vim.keymap.set("n", "<leader>hi", gitsigns.preview_hunk_inline, { desc = "git preview hunk [i]nline", buf = bufnr })
+
+    -- Diff
+    vim.keymap.set("n", "<leader>hd", gitsigns.diffthis, { desc = "git [d]iff against index", buf = bufnr })
+    vim.keymap.set("n", "<leader>hD", function() gitsigns.diffthis("~") end,
+      { desc = "git [D]iff against last commit", buf = bufnr })
+
+    -- Quickfix
+    vim.keymap.set("n", "<leader>hQ", function() gitsigns.setqflist("all") end,
+      { desc = "git hunk [Q]uickfix list (all files)", buf = bufnr })
+    vim.keymap.set("n", "<leader>hq", gitsigns.setqflist, { desc = "git hunk [q]uickfix list (this file)", buf = bufnr })
+
+    -- Toggles
+    vim.keymap.set("n", "<leader>tb", gitsigns.toggle_current_line_blame,
+      { desc = "[T]oggle git show [b]lame line", buf = bufnr })
+    vim.keymap.set("n", "<leader>tw", gitsigns.toggle_word_diff,
+      { desc = "[T]oggle git intra-line [w]ord diff", buf = bufnr })
+
+    -- Text object
+    vim.keymap.set({ "o", "x" }, "ih", gitsigns.select_hunk, { desc = "text object [i]nside [h]unk", buf = bufnr })
+  end,
 })
-
-vim.keymap.set("n", "<leader>tb", "<cmd>Gitsigns toggle_current_line_blame<CR>", { desc = "[T]oggle git [B]lame" })
-vim.keymap.set("n", "<leader>hp", "<cmd>Gitsigns preview_hunk<CR>", { desc = "Git [H]unk [P]review" })
-vim.keymap.set("n", "<leader>hi", "<cmd>Gitsigns preview_hunk_inline<CR>", { desc = "Git [H]unk Preview [I]nline" })
-vim.keymap.set("n", "<leader>hr", "<cmd>Gitsigns reset_hunk<CR>", { desc = "Git [H]unk [R]eset" })
-vim.keymap.set("n", "<leader>hs", "<cmd>Gitsigns select_hunk<CR>", { desc = "Git [H]unk [S]elect" })
-vim.keymap.set("n", "<leader>hn", "<cmd>Gitsigns next_hunk<CR>", { desc = "Git [H]unk [N]ext" })
-
-
--- ╔════════════════════════════════╗
--- ║      PLUGIN: DIFFVIEW          ║
--- ╚════════════════════════════════╝
--- require("diffview").setup({
---   view = {
---     merge_tool = {
---       layout = "diff3_mixed",
---       disable_diagnostics = true,
---     },
---   },
--- })

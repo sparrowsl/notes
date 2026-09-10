@@ -1,39 +1,30 @@
-local treesitter_group = vim.api.nvim_create_augroup("treesitter_start", { clear = true })
+vim.api.nvim_create_autocmd("FileType", {
+  callback = function(args)
+    local lang = vim.treesitter.language.get_lang(args.match)
+    if not lang then
+      return
+    end
 
-local function configure_treesitter(event)
-  local ft = vim.bo[event.buf].filetype
-  if ft == "" then
-    return
-  end
+    if not pcall(vim.treesitter.start, args.buf, lang) then
+      return
+    end
 
-  local ok, lang = pcall(vim.treesitter.language.get_lang, ft)
-  lang = ok and lang or ft
-
-  local parser = vim.treesitter.get_parser(event.buf, lang, { error = false })
-  if parser then
-    vim.treesitter.start(event.buf, lang)
     vim.wo.foldmethod = "expr"
     vim.wo.foldexpr = "v:lua.vim.treesitter.foldexpr()"
-    return
-  end
-
-  vim.wo.foldmethod = "manual"
-  vim.wo.foldexpr = "0"
-end
-
--- Treesitter needs a resolved filetype before it can infer the parser.
-vim.api.nvim_create_autocmd({ "FileType", "BufWinEnter" }, {
-  group = treesitter_group,
-  callback = configure_treesitter,
+  end,
 })
 
 -- update tree-sitter parsers whenever ‘nvim-treesitter’ is updated:
 vim.api.nvim_create_autocmd('PackChanged', {
   callback = function(ev)
-    local name, kind = ev.data.spec.name, ev.data.kind
-    if name == 'nvim-treesitter' and (kind == 'install' or kind == 'update') then
-      if not ev.data.active then vim.cmd.packadd('nvim-treesitter') end
-      vim.cmd('TSUpdate')
+    local name = ev.data.spec.name
+    local kind = ev.data.kind
+    if kind ~= 'install' and kind ~= 'update' then return end
+
+    if name == 'nvim-treesitter' then
+      if not ev.data.active then vim.cmd.packadd 'nvim-treesitter' end
+      vim.cmd 'TSUpdate'
+      return
     end
   end
 })
@@ -57,104 +48,12 @@ vim.api.nvim_create_autocmd("TextYankPost", {
   end,
 })
 
--- close some filetypes with <q>
-vim.api.nvim_create_autocmd("FileType", {
-  group = vim.api.nvim_create_augroup("close_with_q", { clear = true }),
-  pattern = {
-    "checkhealth",
-    "gitsigns-blame",
-    "help",
-    "lspinfo",
-    "notify",
-    "qf",
-    "startuptime",
-  },
-  callback = function(event)
-    vim.bo[event.buf].buflisted = false
-    vim.schedule(function()
-      vim.keymap.set("n", "q", function()
-        vim.cmd("close")
-        pcall(vim.api.nvim_buf_delete, event.buf, { force = true })
-      end, {
-        buffer = event.buf,
-        silent = true,
-        desc = "Quit buffer",
-      })
-    end)
-  end,
-})
-
--- Auto create dir when saving a file, in case some intermediate directory does not exist
-vim.api.nvim_create_autocmd({ "BufWritePre" }, {
-  group = vim.api.nvim_create_augroup("auto_create_dir", { clear = true }),
-  callback = function(event)
-    if event.match:match("^%w%w+://") then
-      return
-    end
-    local file = vim.uv.fs_realpath(event.match) or event.match
-    vim.fn.mkdir(vim.fn.fnamemodify(file, ":p:h"), "p")
-  end,
-})
-
--- go to last loc when opening a buffer
-vim.api.nvim_create_autocmd("BufReadPost", {
-  callback = function(event)
-    -- local exclude = { "gitcommit" } -- don't remember position in commit messages
-    local mark = vim.api.nvim_buf_get_mark(event.buf, '"')
-    local lcount = vim.api.nvim_buf_line_count(event.buf)
-
-    if mark[1] > 0 and mark[1] <= lcount then
-      pcall(vim.api.nvim_win_set_cursor, 0, mark)
-    end
-  end,
-})
-
-
--- Change indentation level to 4 for these languages
-for _, extension in ipairs({ "go", "python", "zig" }) do
-  vim.api.nvim_create_autocmd("FileType", {
-    pattern = extension,
-    callback = function()
-      vim.opt_local.tabstop = 4
-      vim.opt_local.shiftwidth = 4
-      vim.opt_local.softtabstop = 4
-    end,
-  })
-end
-
-local highlight_augroup = vim.api.nvim_create_augroup("lsp-highlight", { clear = true })
-local detach_augroup = vim.api.nvim_create_augroup("lsp-detach", { clear = true })
-
 vim.api.nvim_create_autocmd("LspAttach", {
+  group = vim.api.nvim_create_augroup("lsp-attach", { clear = true }),
   callback = function(event)
     local bufnr = event.buf
 
     local client = vim.lsp.get_client_by_id(event.data.client_id)
-
-    -----------------------------------------------------------
-    -- Document highlights on CursorHold
-    -----------------------------------------------------------
-    if client and client:supports_method("textDocument/documentHighlight", bufnr) then
-      vim.api.nvim_create_autocmd({ "CursorHold", "CursorHoldI" }, {
-        buffer = bufnr,
-        group = highlight_augroup,
-        callback = vim.lsp.buf.document_highlight,
-      })
-
-      vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
-        buffer = bufnr,
-        group = highlight_augroup,
-        callback = vim.lsp.buf.clear_references,
-      })
-
-      vim.api.nvim_create_autocmd("LspDetach", {
-        group = detach_augroup,
-        callback = function(event2)
-          vim.lsp.buf.clear_references()
-          vim.api.nvim_clear_autocmds({ group = highlight_augroup, buffer = event2.buf })
-        end,
-      })
-    end
 
     -----------------------------------------------------------
     -- Inlay hints toggle keymap
@@ -164,24 +63,65 @@ vim.api.nvim_create_autocmd("LspAttach", {
         vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled({ bufnr = bufnr }), { bufnr = bufnr })
       end, { desc = "[T]oggle Inlay [H]ints", buffer = bufnr })
     end
+
+    -----------------------------------------------------------
+    -- LSP navigation keymaps (buffer-scoped)
+    -----------------------------------------------------------
+    vim.keymap.set("n", "K", vim.lsp.buf.hover, { desc = "Hover", buffer = bufnr })
+    vim.keymap.set("n", "gd", vim.lsp.buf.definition, { desc = "[G]oto [D]efinition", buffer = bufnr })
+    vim.keymap.set("n", "gD", vim.lsp.buf.declaration, { desc = "[G]oto [D]eclaration", buffer = bufnr })
+    vim.keymap.set("n", "gI", vim.lsp.buf.implementation, { desc = "[G]oto [I]mplementation", buffer = bufnr })
+    vim.keymap.set("n", "gr", vim.lsp.buf.references, { desc = "[G]oto [R]eferences", buffer = bufnr })
+    vim.keymap.set("n", "<leader>D", vim.lsp.buf.type_definition, { desc = "Type [D]efinition", buffer = bufnr })
+    vim.keymap.set("n", "<leader>ds", vim.lsp.buf.document_symbol, { desc = "[D]ocument [S]ymbols", buffer = bufnr })
+    vim.keymap.set("n", "<leader>ws", vim.lsp.buf.workspace_symbol, { desc = "[W]orkspace [S]ymbols", buffer = bufnr })
+    vim.keymap.set("n", "<leader>rn", vim.lsp.buf.rename, { desc = "[R]e[n]ame", buffer = bufnr })
+    vim.keymap.set({ "n", "x" }, "<leader>ca", vim.lsp.buf.code_action, { desc = "[C]ode [A]ction", buffer = bufnr })
+    vim.keymap.set({ "n", "v" }, "<leader>f", function()
+      vim.lsp.buf.format({ bufnr = bufnr })
+    end, { desc = "[F]ormat buffer", buffer = bufnr })
     --
   end,
 })
 
--- Autoformat on save using only built-in LSP
+local formatters = {
+  lua = { "lua_ls" },
+  javascript = { "biome" },
+  typescript = { "biome" },
+  json = { "biome" },
+  css = { "biome" },
+  svelte = { "biome" },
+  python = { "ruff" },
+  go = { "gopls" },
+  zig = { "zls" },
+}
+-- Autoformat on save using built-in LSP
 vim.api.nvim_create_autocmd("BufWritePre", {
+  group = vim.api.nvim_create_augroup("lsp-format", { clear = true }),
   callback = function(args)
     local bufnr = args.buf
-    local disable_filetypes = { c = false, cpp = true, }
+    local disable_filetypes = { cpp = true }
 
     if disable_filetypes[vim.bo[bufnr].filetype] then
+      return
+    end
+
+    local clients = vim.lsp.get_clients({
+      bufnr = args.buf,
+      method = "textDocument/formatting",
+    })
+
+    if #clients == 0 then
       return
     end
 
     vim.lsp.buf.format({
       bufnr = bufnr,
       timeout_ms = 500,
-      -- async = false, -- keep it sync so it finishes before saving
+      filter = function(client)
+        local allowed = formatters[vim.bo[bufnr].filetype]
+        return allowed and vim.tbl_contains(allowed, client.name)
+      end,
     })
   end,
 })
